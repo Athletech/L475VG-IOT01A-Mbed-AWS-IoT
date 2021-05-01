@@ -1,3 +1,3 @@
 void cloud_init();
-void cloud_send(float temperature, float humidity, float pressure);
+int cloud_send(int16_t *acce, float *gyro, int16_t *mag, int count);
 int cloud_connect();

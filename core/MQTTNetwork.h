@@ -8,6 +8,9 @@
 class MQTTNetwork {
 public:
     MQTTNetwork(NetworkInterface* aNetwork) : network(aNetwork) {
+        printf("************************************\n");
+        printf("Creating a socket\n");
+        printf("************************************\n");
         socket = new TLSSocket(aNetwork);
     }
 
@@ -40,6 +43,9 @@ public:
     }
 
     int disconnect() {
+        printf("************************************\n");
+        printf("Disconnecting a socket\n");
+        printf("************************************\n");
         return socket->close();
     }
 

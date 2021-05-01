@@ -21,7 +21,13 @@ ISM43362Interface wifi(false);
 MQTTNetwork* mqttNetwork = NULL;
 MQTT::Client<MQTTNetwork, Countdown>* mqttClient = NULL;
 
-static unsigned short mqtt_message_id = 0;
+#define BUFFER_SIZE 1024
+
+int buf_size = BUFFER_SIZE;
+
+char buf[BUFFER_SIZE] = {0};
+
+static unsigned int mqtt_message_id = 0;
 
 /*
     Sync clock with NTP server
@@ -55,20 +61,19 @@ void cloud_init(){
 /*
     Sends an MQTT message to the cloud
 */
-void cloud_send(float temperature, float humidity, float pressure){
+int cloud_send(int16_t *acce, float *gyro, int16_t *mag, int count){
     MQTT::Message message;
     message.retained = false;
     message.dup = false;
     
-    const size_t buf_size = 512;
-    char *buf = new char[buf_size];
     message.payload = (void*)buf;
-    
+
     message.qos = MQTT::QOS0;
     message.id = mqtt_message_id++;
-    int ret = snprintf(buf, buf_size, 
-                "{\"sensor\":{\"temperature\":%.2f,\"humidity\":%.2f,\"pressure\":%.2f}}", 
-                temperature, humidity, pressure);
+    int ret = snprintf(buf, buf_size, "{\"acc_x\":%d,\"acc_y\":%d,\"acc_z\":%d,\"gyr_x\":%.2f,\"gyr_y\":%.2f,\"gyr_z\":%.2f,\"mag_x\":%d,\"mag_y\":%d,\"mag_z\":%d,\"Count\": %d,\"DeviceID\": 19951234}",
+                                      acce[0], acce[1], acce[2],
+                                      gyro[0], gyro[1], gyro[2],
+                                      mag[0], mag[1], mag[2],count);
     if(ret < 0) {
         printf("ERROR: snprintf() returns %d.", ret);
     }
@@ -77,15 +82,57 @@ void cloud_send(float temperature, float humidity, float pressure){
     int rc = mqttClient->publish("stm32/sensor", message);
     if(rc != MQTT::SUCCESS) {
         printf("ERROR: rc from MQTT publish is %d\r\n", rc);
+        //wait(10);
+        mqttNetwork->disconnect();
+        delete mqttNetwork;
+        return -1;
     }
-    printf("Message published: %s\r\n",buf);
-    delete[] buf; 
+    //printf("Message published: %s\r\n",buf);
+    //delete[] buf; 
+    return 0;
 }
 
 /*
     Connects to cloud using TLS socket
 */
 int cloud_connect(){
+    int result = 0;
+      
+    /* create mqtt network instance */
+    printf("Initialising MQTT network...");
+    mqttNetwork = new MQTTNetwork(&wifi);
+    int rc = mqttNetwork->connect(MQTT_SERVER_HOST_NAME, MQTT_SERVER_PORT, SSL_CA_PEM,
+                SSL_CLIENT_CERT_PEM, SSL_CLIENT_PRIVATE_KEY_PEM);
+    if (rc != MQTT::SUCCESS){
+        printf("MQTT network not successful\r\n");
+        return 0;
+    }      
+    
+    /* create mqtt data packet */
+    MQTTPacket_connectData data = MQTTPacket_connectData_initializer;
+    data.MQTTVersion = 3;
+    data.clientID.cstring = (char *)MQTT_CLIENT_ID;
+    data.username.cstring = (char *)MQTT_USERNAME;
+    data.password.cstring = (char *)MQTT_PASSWORD;
+
+    /* execute client and send data */
+    mqttClient = new MQTT::Client<MQTTNetwork, Countdown>(*mqttNetwork);
+    rc = mqttClient->connect(data);
+    if (rc != MQTT::SUCCESS) {
+        printf("MQTT client failed\r\n");
+        return 0;
+    }else{
+        printf("MQTT connect successful\r\n");
+        result = 1;
+    }
+    
+    return result;
+}
+
+/*
+    Connects to cloud using TLS socket
+*/
+int cloud_reconnect(){
     int result = 0;
       
     /* create mqtt network instance */
